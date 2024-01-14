@@ -18,11 +18,12 @@ col = lambda num: f"\u001b[38;5;{num}m"
 COLOR_RED = col(196)
 COLOR_RESET = col(0)
 COLOR_WHITE = col(15)
+COLOR_GRAY = col(248)
 COLOR_LIME = col(46)
 COLOR_LIGHT_GREEN = col(83)
 COLOR_GREEN_YELLOW = col(154)
 COLOR_YELLOW = col(220)
-COLOR_ORANGERED = col(202)
+COLOR_ORANGE = col(202)
 STYLE_BOLD = "\033[1m" # col(230)
 STYLE_RESET = "\033[0m"
 
@@ -59,6 +60,7 @@ if __name__ == "__main__":
 
         # the first and last functions are always going to have only 1 neighbor, so skip them
         if older_idx == 0 or older_idx == len(older_funcs) - 1:
+            print_with(f"skipping {function}, impossible to find two neighboring functions for it", COLOR_GRAY)
             continue
 
         # find neighboring functions
@@ -76,46 +78,46 @@ if __name__ == "__main__":
             newer_idx_after = find_idx(newer_funcs, older_funcs[idx_after][0])
 
         if newer_idx_before == -1 or newer_idx_after == -1:
-            print_with(f"Failed to find neighboring functions for {function}, skipping", COLOR_RED)
+            print_with(f"Failed to find neighboring functions for {function}, skipping", COLOR_GRAY)
             continue
 
+        # parse the hex offsets
         newer_func_before = int(newer_funcs[newer_idx_before][1], 16)
         newer_func_after = int(newer_funcs[newer_idx_after][1], 16)
-
-        before_neighbor = older_funcs[idx_before][0]
-        after_neighbor = older_funcs[idx_after][0]
-
         older_func_before = int(older_funcs[idx_before][1], 16)
         older_func_after = int(older_funcs[idx_after][1], 16)
 
+        # find and compare the difference between 2 neighbors in both files
         newer_whole_diff = newer_func_after - newer_func_before
         older_whole_diff = older_func_after - older_func_before
 
         diff_diff = abs(newer_whole_diff - older_whole_diff)
         if diff_diff > DIFF_LIMIT:
-            print_with(f"skipping {function}, hard to estimate the correct location ({diff_diff}b distance difference)", COLOR_RED)
+            print_with(f"skipping {function}, hard to estimate the correct location ({diff_diff}b distance difference)", COLOR_GRAY)
             continue
 
+        # approximate where the function can be: (newfunc3 - newfunc1) * (oldfunc2 - oldfunc1) / (oldfunc3 - oldfunc1)
         older_target_diff = int(function_offset, 16) - older_func_before
         mult = older_target_diff / older_whole_diff
         newer_target_diff = newer_whole_diff * mult
-
         guess = int(newer_func_before + newer_target_diff)
+
         # align the function
         guess = (guess + (FUNC_ALIGNMENT - 1)) & ~(FUNC_ALIGNMENT - 1)
 
-        #print(f"{function} (used {before_neighbor} and {after_neighbor}):", hex(guess))
+        # confidence depends solely on the distance between two neighboring functions
+        # if the distance is the same in both files, confidence is 100%, otherwise it will be lower.
+        # this is also not perfect, because if functions get modified but stay the same size (or get reordered), then you may get a wrong guess with 100% confidence.
+        # but that doesn't happen often so it is not a big deal, as long as you review every match manually.
         confidence = ((DIFF_LIMIT - diff_diff) / DIFF_LIMIT)
 
-        if confidence == 1.0:
+        if confidence >= 0.9:
             color = COLOR_LIME
-        elif confidence >= 0.9:
-            color = COLOR_LIGHT_GREEN
         elif confidence >= 0.7:
             color = COLOR_GREEN_YELLOW
         elif confidence >= 0.5:
             color = COLOR_YELLOW
         else:
-            color = COLOR_ORANGERED
+            color = COLOR_ORANGE
 
         print_with(f"{function} - {COLOR_WHITE}{STYLE_BOLD}{hex(guess)}{STYLE_RESET} (confidence {color}{(confidence * 100):.1f}%{COLOR_WHITE})", color)
