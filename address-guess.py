@@ -10,15 +10,30 @@ before running, you need to dump the known functions in the old and new binaries
 it will then try to find every missing function, and tell you the guessed offset and the confidence of the algorithm in that offset. \
 \n\n\
 note: this is nothing more than simple math so any output offset may not precisely match the target function. it may be a few instructions in, or it may be in a previous function in the binary, though 100% confidence usually indicates an exact match. \
-it is on *you* to check every match and adjust properly. even with 100% confidence, the guesses can be wrong (albeit very rarely), so if it looks off, double check. \
+it is on *you* to check every match and adjust properly. even with 100% confidence, the guesses can be wrong (albeit not commonly), so if it looks off, double check. \
 \n\n\
-the script is also *not* expected to work between platforms in any capacity, and issues may also arise when trying very distant versions on the same platform. your experience may vary."
+the script is also *not* expected to work across different platforms in any capacity, and issues may also arise when trying very distant versions on the same platform. your experience may vary."
+
+col = lambda num: f"\u001b[38;5;{num}m"
+COLOR_RED = col(196)
+COLOR_RESET = col(0)
+COLOR_WHITE = col(15)
+COLOR_LIME = col(46)
+COLOR_LIGHT_GREEN = col(83)
+COLOR_GREEN_YELLOW = col(154)
+COLOR_YELLOW = col(220)
+COLOR_ORANGERED = col(202)
+STYLE_BOLD = "\033[1m" # col(230)
+STYLE_RESET = "\033[0m"
 
 def find_idx(funclist: list, query: str) -> int:
     for (n, (funcname, _)) in enumerate(funclist):
         if funcname == query: return n
 
     return -1
+
+def print_with(msg: str, style: str):
+    print(f"{style}{msg}{COLOR_RESET}")
 
 if __name__ == "__main__":
     if len(sys.argv) >= 2 and sys.argv[1] == '--help':
@@ -38,9 +53,11 @@ if __name__ == "__main__":
     newer_funcs = list(f.split(' - ') for f in newer_path.read_text().splitlines() if f)
 
     for older_idx, (function, function_offset) in enumerate(older_funcs):
+        # if the function already exists in the new file, skip it
         if find_idx(newer_funcs, function) != -1:
             continue
 
+        # the first and last functions are always going to have only 1 neighbor, so skip them
         if older_idx == 0 or older_idx == len(older_funcs) - 1:
             continue
 
@@ -59,7 +76,7 @@ if __name__ == "__main__":
             newer_idx_after = find_idx(newer_funcs, older_funcs[idx_after][0])
 
         if newer_idx_before == -1 or newer_idx_after == -1:
-            print("Failed to find neighboring functions for", function)
+            print_with(f"Failed to find neighboring functions for {function}, skipping", COLOR_RED)
             continue
 
         newer_func_before = int(newer_funcs[newer_idx_before][1], 16)
@@ -76,7 +93,7 @@ if __name__ == "__main__":
 
         diff_diff = abs(newer_whole_diff - older_whole_diff)
         if diff_diff > DIFF_LIMIT:
-            print(f"skipping {function}, hard to estimate the correct location ({diff_diff}B distance difference)")
+            print_with(f"skipping {function}, hard to estimate the correct location ({diff_diff}b distance difference)", COLOR_RED)
             continue
 
         older_target_diff = int(function_offset, 16) - older_func_before
@@ -88,5 +105,17 @@ if __name__ == "__main__":
         guess = (guess + (FUNC_ALIGNMENT - 1)) & ~(FUNC_ALIGNMENT - 1)
 
         #print(f"{function} (used {before_neighbor} and {after_neighbor}):", hex(guess))
-        confidence = ((DIFF_LIMIT - diff_diff) / DIFF_LIMIT) * 100
-        print(f"{function} - {hex(guess)} (confidence {confidence:.1f}%)")
+        confidence = ((DIFF_LIMIT - diff_diff) / DIFF_LIMIT)
+
+        if confidence == 1.0:
+            color = COLOR_LIME
+        elif confidence >= 0.9:
+            color = COLOR_LIGHT_GREEN
+        elif confidence >= 0.7:
+            color = COLOR_GREEN_YELLOW
+        elif confidence >= 0.5:
+            color = COLOR_YELLOW
+        else:
+            color = COLOR_ORANGERED
+
+        print_with(f"{function} - {COLOR_WHITE}{STYLE_BOLD}{hex(guess)}{STYLE_RESET} (confidence {color}{(confidence * 100):.1f}%{COLOR_WHITE})", color)
